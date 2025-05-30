@@ -407,6 +407,9 @@ class Gemma3DecoderLayer(nn.Module):
                 offset = max(0, offset)
                 attention_mask = attention_mask[:, :, :, offset : offset + effective_seq_len]
 
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clamp_(-65504, 65504)
+
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -429,13 +432,19 @@ class Gemma3DecoderLayer(nn.Module):
             **kwargs,
         )
         hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = residual + hidden_states
+        if hidden_states.dtype == torch.float16:
+            hidden_states = (residual.float() + hidden_states.float()).clamp_(-65504, 65504).half()
+        else:
+            hidden_states = residual + hidden_states
 
         residual = hidden_states
         hidden_states = self.pre_feedforward_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
         hidden_states = self.post_feedforward_layernorm(hidden_states)
-        hidden_states = residual + hidden_states
+        if hidden_states.dtype == torch.float16:
+            hidden_states = (residual.float() + hidden_states.float()).clamp_(-65504, 65504).half()
+        else:
+            hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
 
